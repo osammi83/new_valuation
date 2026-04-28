@@ -1,0 +1,43 @@
+column_en,column_ko,description_ko,domain_values,example
+date,기준일,리포트 생성 날짜,YYYYMMDD,2026-04-18
+suggested_rank,추천순위,최종 점수 기준 순위 (1위=최고),1 ~ 800,1
+combined_rank,결합순위,기본면+기술 결합 기준 순위,1 ~ 800,2
+name,종목명,회사명 (한글),KOSPI/KOSDAQ 공시명,LG디스플레이
+ticker,종목코드,6자리 종목코드 (zfill),000000 ~ 999999,034220
+market,시장,상장시장 코드,KS(코스피) | KQ(코스닥),KS
+sector_group,섹터그룹,분석용 섹터 그룹,기타 | 반도체 | 에너지 | 금융(향후 세분화),기타
+close,종가,최근 거래일 종가 (원),0 ~ 1000000,14410.0
+ma20,20일이평,20일 이동평균 (원),종가 범위 내,11936.5
+ma60,60일이평,60일 이동평균 (원),종가 범위 내,12127.5
+ma120,120일이평,120일 이동평균 (원),종가 범위 내,12455.5
+ma200,200일이평,200일 이동평균 (원),종가 범위 내,12077.3
+above_ma200,200일선상단여부,종가가 200일선 위면 1,0(하락장) | 1(상승장),1
+rsi14,RSI14,14일 상대강도지수,0 ~ 100 (30=과매도 | 70=과매수),68.64
+macd_hist,MACD히스토그램,MACD-시그널 (모멘텀),음수(매도신호) ~ 양수(매수신호),349.63
+volume_ratio_20d,거래량비율20일,최근 거래량 / 20일 평균,0.1 ~ 20 (1.0=평년수준),1.89
+breakout_20d_high,20일돌파,20일 신고가 돌파 여부,0(미돌파) | 1(돌파),1
+return_5d,5일수익률(%),최근 5거래일 수익률 (%),- 50% ~ +100%,13.82
+return_20d,20일수익률(%),최근 20거래일 수익률 (%),- 50% ~ +100%,19.78
+relative_strength_20d,상대강도20일,종목-시장 20일 수익률 (상대성과),- 100% ~ +100%,19.78
+trailing_eps_dart,후행EPS(DART),DART 기반 EPS 프록시 (캐시),0 ~ 10000 (원) | 공백,3500
+consensus_eps_scrape,컨센서스EPS(스크랩),스크래핑 기반 선행/컨센서스 EPS,0 ~ 10000 (원) | 공백,3800
+forward_eps_auto,자동선행EPS,성장률 기반 자동 산출 EPS,0 ~ 10000 (원),3850
+source_primary,source_primary,데이터 수집 단계 원본 출처,DART | NAVER_SCRAPE | FALLBACK,DART
+eps_source_used,EPS소스,최종 EPS 선택 소스,MANUAL_FORWARD_EPS | CONSENSUS_SCRAPE | FORWARD_AUTO | TRAILING_DART | (공백),FORWARD_AUTO
+manual_forward_eps,수동선행EPS,사용자 수동 입력 EPS (우선순위 최고),0 ~ 10000 (원) | 공백,(공백)
+expected_eps,모델EPS,밸류 계산에 실제 사용한 EPS,0 ~ 10000 (원),3850
+pe_now,현재PER,현재가 / EPS (밸류에이션),5 ~ 50 (배수) | NaN,11.5
+fair_price_base,적정주가_기준,expected_eps * target_pe_base (원),0 ~ 1000000 (원),46200
+upside_base_pct,상승여력(%),(fair_price_base/close-1)*100 (%),-100% ~ +300%,25.5
+valuation_score,밸류점수,상승여력 기반 정규화 점수,0 ~ 100 (0=저평가 없음 | 100=고평가),75
+is_loss_making,is_loss_making,손실 기업 여부,0(흑자) | 1(손실),0
+max_position_pct,max_position_pct,포트폴리오 내 최대 허용 비중 (%),1.0% ~ 5.0%,3.0
+technical_score,기술점수,기술 지표 기반 정규화 점수,0 ~ 100 (MA/RSI/MACD/거래량/돌파),82
+total_score,종합점수,밸류+기술 결합 점수,(밸류+기술)/2,78.5
+combined_action,결합액션,최종 추천 액션,최종매수후보 | 진입대기 | 관찰 | 제외,최종매수후보
+suggested_weight_pct,권장비중(%),포트폴리오 내 권장 비중 (%),0.0% ~ 5.0%,3.0
+market_regime,마켓레짐,현재 시장 상태 (KOSPI/KOSDAQ 20d MA 기준),BULL(상승장) | BEAR(하락장),BULL
+regime_weight_multiplier,레짐비중배수,시장 상태에 따른 비중 조정 배수,1.0(BULL) | 0.5(BEAR),1.0
+sector_pe_cap,sector_pe_cap,섹터별 적용 P/E 상한선,10 ~ 30 (배수),19.95
+brief_reason,핵심요약,추천 근거 한 줄 요약 (기술신호+EPS상태),"200일↑ | 20일돌파 | 거래량x1.9 | RSI우호 | MACD+ | EPS없음",200일↑ | 20일돌파 | 거래량x1.9 | RSI우호 | MACD+
+warn_flags,주의표시,주의 필요 항목 플래그,"EPS없음 | 적정주가불명 | 거래량저조 | 기술약세 | 손실기업",(공백 또는 복수)

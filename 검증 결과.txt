@@ -1,0 +1,58 @@
+검증 결과
+
+섹터 문제는 재현됐고, 즉시 개선 가능으로 확인
+초기 상태: 섹터그룹 1개(기타만), 섹터PER상한 단일값
+원인: 일일 실행에서 assumptions 섹터 보강이 빠져 있음
+확인: run_daily.ps1:83, run_daily.ps1:84, run_daily.ps1:85
+보강 코드 존재: refresh_assumptions.py:45
+실제 재실행 후: 섹터 71개로 정상화됨
+적자 플래그 오작동은 현재도 남아 있음
+현재 로직은 적자여부를 assumptions 값만 사용
+코드 위치: build_daily_report.py:1534
+데이터상 모델EPS 음수 종목이 많은데 적자여부는 0으로 유지되는 구조
+단기 수정 난이도 낮음(모델EPS/후행EPS 기반 자동 산출 가능)
+결합액션-권장비중 불일치 이슈는 일부 잔존
+가중치 함수가 액션을 모르고 점수만으로 비중 산정
+코드 위치: build_daily_report.py:473, build_daily_report.py:1565
+제외 종목에도 양수 비중이 남을 수 있는 구조
+단기 수정 난이도 낮음(액션별 강제 캡 적용)
+시장 레짐은 단순 규칙이라 BULL 고정이 쉽게 발생
+현재 규칙: KOSPI/KOSDAQ이 20일선 아래면 BEAR
+코드 위치: build_daily_report.py:1301
+데이터 조건에 따라 BULL 편향이 생길 수 있음
+중간 난이도(레짐 지표 확장 필요)
+날짜 의미(run date vs trade date) 분리는 아직 미흡
+기준일은 현재 today로 일괄 삽입
+코드 위치: build_daily_report.py:1414, build_daily_report.py:1606
+타임라인은 실제 거래일 사용
+코드 위치: build_daily_report.py:1109
+단기 수정 가능(컬럼 분리 추가)
+신호 라이브러리 검증은 추가 로깅 보강 필요
+생성 경로는 존재
+코드 위치: build_daily_report.py:1656
+다만 오늘 full 실행에서는 신호요약이 비어 있었음(데이터/조건/샘플 검증 필요)
+단기 보강 가능(신호 발생 건수 진단 로그, 최소 샘플 미달 경고)
+중요하게 확인된 구조 이슈 1개
+
+build_daily_report가 assumptions를 매번 universe 기준으로 덮어씀
+코드 위치: build_daily_report.py:347, build_daily_report.py:361
+현재는 리츠 제외 필터 적용 후 동기화되어 assumptions와 universe 기준이 흔들릴 수 있음
+이 부분은 운영 안정성 관점에서 우선 수정 권장
+개발 가능성 분류
+
+즉시 개발 가능(1~2일)
+run_daily에 assumptions 보강 단계 포함
+적자여부 자동 계산 로직 추가
+제외/관찰 액션 비중 강제 규칙 추가
+run_date/trade_date 컬럼 분리
+신호요약 공백 원인 진단 로그 추가
+단기 개발 가능(3~7일)
+레짐 로직 확장(지수 + 변동성/거래대금/하락폭 조건)
+신호 기대값이 음수일 때 우선순위 강등 규칙
+액션과 포트폴리오 총비중 정규화
+중기 개발(2~4주)
+EPS 단일축 완화(품질/현금흐름/부채/희석 지표)
+비용/슬리피지 반영 백테스트 프레임
+원하시면 다음 턴에서 바로 1번 묶음(즉시 개발 가능 항목)부터 03.new_valuation 코드에 실제 반영해드리겠습니다.
+
+GPT-5.4 mini • 0.3x

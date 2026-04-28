@@ -1,0 +1,6 @@
+﻿ticker,market,data_source,row_count,latest_trade_date,stale_flag,latest_close
+000660,KS,yfinance,242,20260427,0,1292000.0
+005380,KS,yfinance,242,20260427,0,524000.0
+005930,KS,yfinance,242,20260427,0,224500.0
+373220,KS,yfinance,242,20260427,0,464000.0
+402340,KS,yfinance,242,20260427,0,789000.0

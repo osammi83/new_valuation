@@ -1,0 +1,43 @@
+﻿column_en,column_ko,description_ko
+date,기준일,리포트 생성 날짜
+suggested_rank,추천순위,최종 점수 기준 순위
+combined_rank,결합순위,기본면+기술 결합 기준 순위
+name,종목명,회사명
+ticker,종목코드,6자리 종목코드
+market,시장,KS(코스피)/KQ(코스닥)
+sector_group,섹터그룹,분석용 섹터 그룹
+close,종가,최근 종가
+ma20,20일이평,20일 이동평균
+ma60,60일이평,60일 이동평균
+ma120,120일이평,120일 이동평균
+ma200,200일이평,200일 이동평균
+above_ma200,200일선상단여부,종가가 200일선 위면 1
+rsi14,RSI14,14일 RSI
+macd_hist,MACD히스토그램,MACD-시그널
+volume_ratio_20d,거래량비율20일,최근 거래량 / 20일 평균
+breakout_20d_high,20일돌파,20일 신고가 돌파 여부
+return_5d,5일수익률(%),최근 5거래일 수익률
+return_20d,20일수익률(%),최근 20거래일 수익률
+relative_strength_20d,상대강도20일,종목-시장 20일 수익률
+trailing_eps_dart,후행EPS(DART),DART 기반 EPS 프록시(캐시)
+consensus_eps_scrape,컨센서스EPS(스크랩),스크래핑 기반 선행/컨센서스 EPS
+forward_eps_auto,자동선행EPS,성장률 기반 자동 산출 EPS
+source_primary,source_primary,설명 미정의 컬럼
+eps_source_used,EPS소스,최종 EPS 선택 소스
+manual_forward_eps,수동선행EPS,사용자 수동 입력 EPS
+expected_eps,모델EPS,밸류 계산에 사용한 EPS
+pe_now,현재PER,현재가 / EPS
+fair_price_base,적정주가_기준,expected_eps * target_pe_base
+upside_base_pct,상승여력(%),(fair_price_base/close-1)*100
+valuation_score,밸류점수,상승여력 기반 0~100 점수
+is_loss_making,is_loss_making,설명 미정의 컬럼
+max_position_pct,max_position_pct,설명 미정의 컬럼
+technical_score,기술점수,기술 지표 기반 0~100 점수
+total_score,종합점수,밸류+기술 결합 점수
+combined_action,결합액션,최종매수후보/진입대기/관찰/제외
+suggested_weight_pct,권장비중(%),최종 점수 기반 비중(%)
+market_regime,마켓레짐,시장 상태(BULL/BEAR)
+regime_weight_multiplier,레짐비중배수,하락장 비중 감산 배수
+sector_pe_cap,sector_pe_cap,설명 미정의 컬럼
+brief_reason,핵심요약,한 줄 근거 요약
+warn_flags,주의표시,주의 플래그
