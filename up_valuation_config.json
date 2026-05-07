@@ -1,6 +1,17 @@
-{
-  "pythonPath": "d:/00.개발/.venv/Scripts/python.exe",
+﻿{
+  "pythonPath": "D:\\00.개발\\.venv\\Scripts\\python.exe",
   "enableGoogleDriveUpload": false,
   "googleDriveFolderId": "",
-  "googleServiceAccountJsonPath": ""
+  "googleServiceAccountJsonPath": "",
+  "enableGithubAutoSync": true,
+  "githubRemoteName": "origin",
+  "githubBranch": "main",
+  "githubCommitPrefix": "auto: sync generated changes",
+  "dailyTime": "08:30",
+  "monthlyTime": "08:00",
+  "assumptionsMonthlyTime": "08:10",
+  "taskPrefix": "UPValuation",
+  "dartApiKey": "38677c0619afca2a6e2bb633db6e23719a723e8a",
+  "krxId": "",
+  "krxPw": ""
 }

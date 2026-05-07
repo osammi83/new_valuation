@@ -1,0 +1,6 @@
+﻿as_of,status,returncode,started_at,finished_at,report_path,message
+2026-04-29,success,0,2026-05-05T14:47:53,2026-05-05T14:47:58,D:\00.개발\03.new_valuation\output\상세리포트_2026-04-29.csv,
+2026-04-30,skipped,0,2026-05-05T14:47:58,2026-05-05T14:47:58,D:\00.개발\03.new_valuation\output\상세리포트_2026-04-30.csv,report already exists
+2026-05-01,success,0,2026-05-05T14:47:58,2026-05-05T14:48:02,D:\00.개발\03.new_valuation\output\상세리포트_2026-05-01.csv,
+2026-05-04,success,0,2026-05-05T14:48:02,2026-05-05T14:48:05,D:\00.개발\03.new_valuation\output\상세리포트_2026-05-04.csv,
+2026-05-05,skipped,0,2026-05-05T14:48:05,2026-05-05T14:48:05,D:\00.개발\03.new_valuation\output\상세리포트_2026-05-05.csv,report already exists

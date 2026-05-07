@@ -1,0 +1,7 @@
+Set-Location "D:/00.개발/03.new_valuation"
+
+git add .
+
+git commit -m "수정 내용 적기"
+
+git push (이제 -u origin main이나 +를 안 붙여도 됩니다!)

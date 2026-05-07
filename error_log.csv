@@ -1,0 +1,14 @@
+﻿event_ts,run_id,program_name,severity,error_code,ticker,message
+2026-04-28T22:28:51,20260428222851-ad81624e,run_pipeline.py,ERROR,PIPELINE_FAILED,,'Namespace' object has no attribute 'days_back'
+2026-04-28T22:31:10,20260428223110-b2829383,run_pipeline.py,ERROR,PIPELINE_FAILED,,'Namespace' object has no attribute 'days_back'
+2026-04-28T22:34:24,20260428223424-cb03299b,run_pipeline.py,ERROR,PIPELINE_FAILED,,'Namespace' object has no attribute 'days_back'
+2026-04-28T22:35:23,20260428223523-fdd3fce4,run_pipeline.py,ERROR,PIPELINE_FAILED,,'Namespace' object has no attribute 'days_back'
+2026-04-30T07:26:21,20260430072551-f8aad192,run_pipeline.py,ERROR,PIPELINE_FAILED,,[Pipeline] Step 8/9 validate_outputs.py failed with exit code 1
+2026-04-30T07:32:42,20260430073219-6b6ffc56,run_pipeline.py,ERROR,PIPELINE_FAILED,,[Pipeline] Step 9/9 validate_csv_contracts.py failed with exit code 1
+2026-04-30T07:33:47,20260430072641-58a047e7,run_pipeline.py,ERROR,PIPELINE_FAILED,,[Pipeline] Step 9/9 validate_csv_contracts.py failed with exit code 1
+2026-04-30T20:59:51,20260430205812-4a11df80,run_pipeline.py,ERROR,PIPELINE_FAILED,,[Pipeline] Daily 6/7 manage_positions.py failed with exit code 1
+2026-04-30T21:02:15,20260430210044-9ff64f29,run_pipeline.py,ERROR,PIPELINE_FAILED,,name 'OUTPUT_DIR' is not defined
+2026-04-30T21:34:23,20260430213249-b07ec587,run_pipeline.py,ERROR,PIPELINE_FAILED,,[Pipeline] Daily 4/7 build_features_daily.py failed with exit code 1
+2026-04-30T21:37:35,20260430213553-08041502,run_pipeline.py,ERROR,PIPELINE_FAILED,,[Pipeline] Daily 7/7 build_daily_report.py failed with exit code 1
+2026-04-30T21:39:57,20260430213820-574dc3c1,run_pipeline.py,ERROR,PIPELINE_FAILED,,[Pipeline] Daily 7/7 build_daily_report.py failed with exit code 1
+2026-04-30T23:11:03,20260430230909-9439b75b,run_pipeline.py,ERROR,PIPELINE_FAILED,,[Pipeline] Daily 7/7 build_daily_report.py failed with exit code 1

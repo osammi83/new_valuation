@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -16,7 +17,7 @@ OUTPUT_DIR = BASE_DIR / "output"
 
 
 def _latest_file(pattern: str) -> Path | None:
-    candidates = [path for path in OUTPUT_DIR.glob(pattern) if path.is_file() and "_locked_" not in path.name]
+    candidates = [path for path in OUTPUT_DIR.glob(pattern) if path.is_file()]
     if not candidates:
         return None
     return max(candidates, key=lambda path: path.stat().st_mtime)
@@ -34,6 +35,25 @@ def _pick_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
         if name in df.columns:
             return name
     return None
+
+
+def _safe_write_csv(df: pd.DataFrame, path: Path) -> Path:
+    tmp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
+    try:
+        df.to_csv(tmp_path, index=False, encoding="utf-8-sig")
+        os.replace(tmp_path, path)
+        return path
+    except PermissionError:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+        fallback = path.with_name(f"{path.stem}_locked_{datetime.now().strftime('%H%M%S')}{path.suffix}")
+        fallback_tmp = fallback.with_name(f"{fallback.stem}.tmp{fallback.suffix}")
+        df.to_csv(fallback_tmp, index=False, encoding="utf-8-sig")
+        os.replace(fallback_tmp, fallback)
+        return fallback
 
 
 def _load_signal_frame(input_path: str | None = None) -> pd.DataFrame:
@@ -494,13 +514,13 @@ def _write_outputs(position_df: pd.DataFrame, order_df: pd.DataFrame, event_df: 
     event_path = OUTPUT_DIR / f"position_events_{suffix}.csv"
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    position_df.to_csv(position_path, index=False, encoding="utf-8-sig")
-    order_df.to_csv(order_path, index=False, encoding="utf-8-sig")
-    event_df.to_csv(event_path, index=False, encoding="utf-8-sig")
+    position_path = _safe_write_csv(position_df, position_path)
+    order_path = _safe_write_csv(order_df, order_path)
+    event_path = _safe_write_csv(event_df, event_path)
 
-    position_df.to_csv(OUTPUT_DIR / "positions.csv", index=False, encoding="utf-8-sig")
-    order_df.to_csv(OUTPUT_DIR / "orders.csv", index=False, encoding="utf-8-sig")
-    event_df.to_csv(OUTPUT_DIR / "position_events.csv", index=False, encoding="utf-8-sig")
+    _safe_write_csv(position_df, OUTPUT_DIR / "positions.csv")
+    _safe_write_csv(order_df, OUTPUT_DIR / "orders.csv")
+    _safe_write_csv(event_df, OUTPUT_DIR / "position_events.csv")
     return position_path, order_path, event_path
 
 

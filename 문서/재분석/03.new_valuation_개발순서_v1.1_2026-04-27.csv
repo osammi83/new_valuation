@@ -1,4 +1,4 @@
-"순서","대상","목적","상태","완료여부","비고"
+﻿"순서","대상","목적","상태","완료여부","비고"
 "1","sync_universe_master.py","universe/assumptions 정합화 분리","완료","Y","refresh_assumptions.py와 분리 완료 후 검증"
 "2","ingest_dart_disclosures.py","공시 수집 모듈 분리","완료","Y","preprocess_daily_updates.py에서 분리 완료 및 단독 실행 검증"
 "3","build_features_daily.py","피처 생성 모듈 분리","완료","Y","독립 피처 CSV 생성 검증 완료"
@@ -8,3 +8,4 @@
 "7","validate_csv_contracts.py","계약 검증 유지/고도화","완료","Y","현재 구현 완료"
 "8","ingest_market_data.py","시세/수급 수집","완료","Y","price_daily.csv 및 market_index_daily.csv 생성 검증 완료"
 "9","publish_to_drive.py","배포 모듈 분리","완료","Y","upload_to_google_drive.py 별칭/대체"
+"10","backtest_walkforward.py","워크포워드 백테스트","완료","Y","price_daily.csv와 상세리포트 CSV로 forward return 검증"

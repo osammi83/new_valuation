@@ -1,4 +1,4 @@
-dataset,file_glob,required_columns,key_columns,enum_rules,enabled,notes
+﻿dataset,file_glob,required_columns,key_columns,enum_rules,enabled,notes
 universe,universe.csv,name|ticker|market,ticker,market=KS|KQ,Y,Universe master CSV
 assumptions,assumptions.csv,ticker|is_loss_making|eps_growth_3y_pct|target_pe_bear|target_pe_base|target_pe_bull|manual_forward_eps|max_position_pct|sector_group,ticker,,Y,Assumptions master CSV
 eps_cache,eps_cache.csv,asof_date|ticker|trailing_eps_dart|trailing_eps_scrape|consensus_eps_scrape|naver_sector|source_primary|forward_eps_auto|eps_growth_auto_pct,ticker,,Y,EPS cache CSV
@@ -6,3 +6,8 @@ daily_report,output/상세리포트_*.csv,기준일|추천순위|결합순위|�
 core_selection,output/종목선정_핵심근거_*.csv,기준일|추천순위|종목명|종목코드|시장|선정의견|선정핵심근거|선택신호|선택신호_신뢰도|선택신호_5일승률(%)|선택신호_기대값5일(%)|선택신호_발생건수|거래량비율20일|거래량신호점수|거래량백분위(시장내%)|거래량판정|과거거래량신호_5일승률(%)|과거거래량신호_기대값5일(%)|20일돌파|200일선상단여부|RSI14|종합점수|최종판단점수|초보자설명|판단코멘트,종목코드|기준일,시장=KS|KQ,Y,Core selection output
 timeline_30d,output/최종매수_30일타임라인_*.csv,기준일|종목명|종목코드|시장|종가|직전20일고가|20일돌파|거래량비율20일,종목코드|기준일,시장=KS|KQ,Y,30-day timeline output
 diff_daily,output/최종매수_전일비교_*.csv,당일기준일|전일기준일|변화상태|종목명|종목코드|전일추천순위|당일추천순위|순위변화|전일결합액션|당일결합액션|전일종합점수|당일종합점수|종합점수변화|전일기술점수|당일기술점수|기술점수변화|전일밸류점수|당일밸류점수|밸류점수변화|전일20일돌파|당일20일돌파|전일거래량비율20일|당일거래량비율20일|거래량비율20일변화|전일상승여력(%)|당일상승여력(%)|상승여력변화(%),종목코드|당일기준일,변화상태=유지|상승|하락|신규|이탈;전일결합액션=최종매수후보|진입대기|관찰|제외;당일결합액션=최종매수후보|진입대기|관찰|제외,Y,Day-over-day comparison output
+run_history,run_history.csv,run_id|run_type|as_of_date|status|started_at|finished_at|warning_count|error_count|code_version,,Y,Run history log
+error_log,error_log.csv,event_ts|run_id|program_name|severity|error_code|ticker|message,,Y,Error log
+backtest_summary,output/backtest_summary_*.csv|output/backtest_summary.csv,scope|group_value|trade_count|avg_gross_return_pct|avg_net_return_pct|win_rate_pct|median_net_return_pct|avg_score|avg_weight_pct,scope|group_value,,Y,Backtest summary output
+backtest_trades,output/backtest_trades_*.csv|output/backtest_trades.csv,report_date|ticker|name|market|combined_action|signal_score|signal_weight_pct|forward_horizon_days|current_close|future_close|gross_return_pct|net_return_pct|cost_bps|is_signal,report_date|ticker|forward_horizon_days,,Y,Backtest trade output
+threshold_grid_results,output/threshold_grid_results_*.csv|output/threshold_grid_results.csv,forward_horizon_days|score_threshold|selected_count|avg_net_return_pct|win_rate_pct|avg_score|avg_weight_pct,forward_horizon_days|score_threshold,,Y,Backtest threshold grid output

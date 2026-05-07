@@ -1,0 +1,72 @@
+name: Backfill 5Y
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start date YYYY-MM-DD"
+        required: false
+        default: ""
+      end:
+        description: "End date YYYY-MM-DD"
+        required: false
+        default: ""
+      years:
+        description: "Historical range in years"
+        required: false
+        default: "5"
+      max_days:
+        description: "Optional max business days to process"
+        required: false
+        default: "0"
+      force:
+        description: "Regenerate existing report files"
+        required: false
+        default: "false"
+      stop_on_error:
+        description: "Stop on first failure"
+        required: false
+        default: "true"
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: powershell
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+
+      - name: Run backfill
+        shell: powershell
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+        run: |
+          $args = @()
+          if ('${{ inputs.start }}' -ne '') { $args += '--start'; $args += '${{ inputs.start }}' }
+          if ('${{ inputs.end }}' -ne '') { $args += '--end'; $args += '${{ inputs.end }}' }
+          if ('${{ inputs.years }}' -ne '') { $args += '--years'; $args += '${{ inputs.years }}' }
+          if ('${{ inputs.max_days }}' -ne '0') { $args += '--max-days'; $args += '${{ inputs.max_days }}' }
+          if ('${{ inputs.force }}' -eq 'true') { $args += '--force' }
+          if ('${{ inputs.stop_on_error }}' -eq 'true') { $args += '--stop-on-error' }
+          python history_backfill.py @args

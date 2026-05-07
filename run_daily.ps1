@@ -22,12 +22,36 @@ if($config -and $null -ne $config.enableGoogleDriveUpload){
 	$driveUploadEnabled = [bool]$config.enableGoogleDriveUpload
 }
 
+$githubAutoSyncEnabled = $false
+if($config -and $null -ne $config.enableGithubAutoSync){
+	$githubAutoSyncEnabled = [bool]$config.enableGithubAutoSync
+}
+
+$githubRemoteName = 'origin'
+if($config -and $config.githubRemoteName){
+	$githubRemoteName = [string]$config.githubRemoteName
+}
+
+$githubBranch = 'main'
+if($config -and $config.githubBranch){
+	$githubBranch = [string]$config.githubBranch
+}
+
+$githubCommitPrefix = 'auto: sync generated changes'
+if($config -and $config.githubCommitPrefix){
+	$githubCommitPrefix = [string]$config.githubCommitPrefix
+}
+
 if($config -and $config.googleDriveFolderId -and [string]::IsNullOrWhiteSpace($env:GOOGLE_DRIVE_FOLDER_ID)){
 	$env:GOOGLE_DRIVE_FOLDER_ID = [string]$config.googleDriveFolderId
 }
 
 if($config -and $config.googleServiceAccountJsonPath -and [string]::IsNullOrWhiteSpace($env:GOOGLE_SERVICE_ACCOUNT_JSON)){
 	$env:GOOGLE_SERVICE_ACCOUNT_JSON = [string]$config.googleServiceAccountJsonPath
+}
+
+if($githubAutoSyncEnabled){
+	Write-Host '[Info] GitHub auto sync is enabled via config.'
 }
 
 function Resolve-PythonRunner {
@@ -83,7 +107,17 @@ Write-Host '[Info] Daily run uses existing eps_cache.csv. Refresh separately via
 
 # Delegate the daily flow to the Python orchestrator.
 Write-Host '[Info] Delegating daily flow to run_pipeline.py...'
-& $pythonRunner.Exe @($pythonRunner.Args) run_pipeline.py @Args
+& $pythonRunner.Exe @($pythonRunner.Args) run_pipeline.py daily @Args
 if($LASTEXITCODE -ne 0){ throw '[ERROR] run_pipeline.py failed' }
+
+if($githubAutoSyncEnabled){
+	Write-Host '[Info] Syncing changes to GitHub...'
+	& (Join-Path $here 'sync_github.ps1') -RemoteName $githubRemoteName -Branch $githubBranch -CommitPrefix $githubCommitPrefix
+	if($LASTEXITCODE -ne 0){
+		Write-Warning '[Warn] GitHub auto sync failed. Daily run completed without pushing changes.'
+	}
+} else {
+	Write-Host '[Info] GitHub auto sync skipped.'
+}
 
 

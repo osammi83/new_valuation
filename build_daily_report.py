@@ -185,6 +185,15 @@ def _safe_write_csv(df: pd.DataFrame, out_path: Path) -> Path:
         return alt
 
 
+def _write_bilingual_csv(df: pd.DataFrame, out_path: Path, extra_ko: dict[str, str] | None = None) -> Path:
+    bilingual = df.copy()
+    if extra_ko:
+        bilingual.columns = _make_bilingual_with_extra(list(bilingual.columns), extra_ko)
+    else:
+        bilingual.columns = make_bilingual_headers(list(bilingual.columns))
+    return _safe_write_csv(bilingual, out_path)
+
+
 def cleanup_legacy_outputs(today: str) -> list[Path]:
     removed: list[Path] = []
     patterns = [
@@ -1033,6 +1042,136 @@ def _build_signal_indicator_guide(signal_summary_df: pd.DataFrame, today: str) -
     return pd.DataFrame(rows)
 
 
+def _build_scored_row(
+    name: str,
+    ticker: str,
+    market: str,
+    hist: pd.DataFrame,
+    assumptions_row: pd.Series,
+    cache_row: pd.DataFrame,
+    market_regime: str,
+    regime_mult: float,
+) -> dict[str, object]:
+    close_series = hist["Close"].dropna()
+    close = safe_float(close_series.iloc[-1])
+    ma20 = safe_float(close_series.rolling(20).mean().iloc[-1])
+    ma60 = safe_float(close_series.rolling(60).mean().iloc[-1])
+    ma120 = safe_float(close_series.rolling(120).mean().iloc[-1])
+    ma200 = safe_float(close_series.rolling(200).mean().iloc[-1])
+    above_ma200 = int(close > ma200) if ma200 and ma200 > 0 else 0
+
+    rsi14 = calc_rsi(close_series)
+    macd_hist = calc_macd_hist(close_series)
+    volume_ratio_20d = calc_volume_ratio(hist.get("Volume"))
+    breakout_20d_high = calc_breakout_20d_high(close_series)
+
+    ret_5d = calc_returns(close_series, 5)
+    ret_20d = calc_returns(close_series, 20)
+    rs_20d = ret_20d - 0.0 if not np.isnan(ret_20d) else np.nan
+
+    trailing_eps_dart = np.nan
+    consensus_eps_scrape = np.nan
+    forward_eps_auto = np.nan
+    source_primary = ""
+    if not cache_row.empty:
+        trailing_eps_dart = safe_float(cache_row.iloc[0].get("trailing_eps_dart", np.nan))
+        consensus_eps_scrape = safe_float(cache_row.iloc[0].get("consensus_eps_scrape", np.nan))
+        forward_eps_auto = safe_float(cache_row.iloc[0].get("forward_eps_auto", np.nan))
+        source_primary = str(cache_row.iloc[0].get("source_primary", "") or "").strip()
+
+    manual_forward_eps = safe_float(assumptions_row.get("manual_forward_eps", np.nan))
+    expected_eps = manual_forward_eps
+    eps_source_used = "MANUAL_FORWARD_EPS"
+    if np.isnan(expected_eps):
+        expected_eps = trailing_eps_dart
+        eps_source_used = "TRAILING_DART"
+    if np.isnan(expected_eps):
+        expected_eps = consensus_eps_scrape
+        eps_source_used = "CONSENSUS_SCRAPE"
+    if np.isnan(expected_eps):
+        expected_eps = forward_eps_auto
+        eps_source_used = "FORWARD_AUTO"
+
+    if np.isnan(expected_eps) and (not np.isnan(trailing_eps_dart)):
+        growth_pct = safe_float(assumptions_row.get("eps_growth_3y_pct", 10.0))
+        growth = growth_pct / 100.0 if not np.isnan(growth_pct) else 0.10
+        growth = float(np.clip(growth, -0.5, 0.8))
+        expected_eps = trailing_eps_dart * (1.0 + growth)
+        eps_source_used = "GROWTH_AUTO"
+
+    target_pe_base = safe_float(assumptions_row.get("target_pe_base", 12.0))
+    fair_price_base = expected_eps * target_pe_base if (not np.isnan(expected_eps) and close > 0) else np.nan
+    upside_base_pct = ((fair_price_base / close) - 1.0) * 100.0 if (not np.isnan(fair_price_base) and close > 0) else np.nan
+    pe_now = close / expected_eps if (close > 0 and expected_eps and not np.isnan(expected_eps) and expected_eps != 0) else np.nan
+
+    valuation_score = calc_valuation_score(safe_float(upside_base_pct))
+    row = {
+        "name": name,
+        "ticker": ticker,
+        "market": market,
+        "sector_group": str(assumptions_row.get("sector_group", "기타")),
+        "close": close,
+        "ma20": ma20,
+        "ma60": ma60,
+        "ma120": ma120,
+        "ma200": ma200,
+        "above_ma200": above_ma200,
+        "rsi14": rsi14,
+        "macd_hist": macd_hist,
+        "volume_ratio_20d": volume_ratio_20d,
+        "breakout_20d_high": breakout_20d_high,
+        "return_5d": ret_5d,
+        "return_20d": ret_20d,
+        "relative_strength_20d": rs_20d,
+        "trailing_eps_dart": trailing_eps_dart,
+        "consensus_eps_scrape": consensus_eps_scrape,
+        "forward_eps_auto": forward_eps_auto,
+        "source_primary": source_primary,
+        "eps_source_used": eps_source_used,
+        "manual_forward_eps": manual_forward_eps,
+        "expected_eps": expected_eps,
+        "pe_now": pe_now,
+        "fair_price_base": fair_price_base,
+        "upside_base_pct": upside_base_pct,
+        "valuation_score": valuation_score,
+        "is_loss_making": 1 if ((expected_eps < 0) or (trailing_eps_dart < 0)) else int(safe_float(assumptions_row.get("is_loss_making", 0)) or 0),
+        "max_position_pct": safe_float(assumptions_row.get("max_position_pct", 3.0)),
+    }
+
+    row["technical_score"] = calc_technical_score(pd.Series(row))
+    if np.isnan(row["valuation_score"]):
+        row["total_score"] = float(row["technical_score"])
+    else:
+        row["total_score"] = float(0.5 * row["valuation_score"] + 0.5 * row["technical_score"])
+
+    has_eps = not np.isnan(pd.to_numeric(row.get("expected_eps", np.nan), errors="coerce"))
+    cond_buy = has_eps and (row["total_score"] >= 75) and (above_ma200 == 1) and (breakout_20d_high == 1)
+    cond_wait = has_eps and (row["total_score"] >= 65) and (above_ma200 == 1)
+    cond_watch = has_eps and (row["total_score"] >= 50)
+
+    if cond_buy:
+        row["combined_action"] = "최종매수후보"
+    elif cond_wait:
+        row["combined_action"] = "진입대기"
+    elif cond_watch:
+        row["combined_action"] = "관찰"
+    elif not has_eps:
+        row["combined_action"] = "관찰"
+    else:
+        row["combined_action"] = "제외"
+
+    row["suggested_weight_pct"] = calc_weight(row["total_score"], row["max_position_pct"])
+    if not has_eps:
+        row["suggested_weight_pct"] = 0.0
+    if row["combined_action"] == "제외":
+        row["suggested_weight_pct"] = 0.0
+
+    row["market_regime"] = market_regime
+    row["regime_weight_multiplier"] = regime_mult
+    row["suggested_weight_pct"] = float(row["suggested_weight_pct"] * regime_mult)
+    return row
+
+
 def _build_core_selection_output(selection_guide_df: pd.DataFrame) -> pd.DataFrame:
     cols = [
         "기준일",
@@ -1072,7 +1211,201 @@ def _build_core_selection_output(selection_guide_df: pd.DataFrame) -> pd.DataFra
     return core[keep].sort_values(by=["최종판단점수", "종합점수"], ascending=False).reset_index(drop=True)
 
 
-def build_final_buy_timeline_30d(df_sorted: pd.DataFrame, today: str) -> Optional[Path]:
+def _write_primary_outputs(df_sorted: pd.DataFrame, selection_guide_df: pd.DataFrame, today: str) -> dict[str, Path | None]:
+    watch_cols = [
+        "date",
+        "suggested_rank",
+        "combined_rank",
+        "name",
+        "ticker",
+        "market",
+        "sector_group",
+        "close",
+        "upside_base_pct",
+        "valuation_score",
+        "technical_score",
+        "total_score",
+        "combined_action",
+        "suggested_weight_pct",
+        "brief_reason",
+        "warn_flags",
+    ]
+
+    out_full = OUTPUT_DIR / f"{REPORT_FILE_PREFIX}_{today}.csv"
+    out_full = _write_bilingual_csv(df_sorted.copy(), out_full)
+
+    watch = df_sorted[watch_cols].copy()
+    out_watch = OUTPUT_DIR / f"{WATCH_FILE_PREFIX}_{today}.csv"
+    out_watch = _write_bilingual_csv(watch, out_watch)
+
+    entry = df_sorted.loc[df_sorted["combined_action"].isin(["최종매수후보", "진입대기"])].copy()
+    entry = entry[watch_cols]
+    out_entry = OUTPUT_DIR / f"{ENTRY_FILE_PREFIX}_{today}.csv"
+    out_entry = _write_bilingual_csv(entry, out_entry)
+
+    core_selection_df = _build_core_selection_output(selection_guide_df=selection_guide_df)
+    out_core_selection = OUTPUT_DIR / f"{CORE_SELECTION_FILE_PREFIX}_{today}.csv"
+    out_core_selection = _write_bilingual_csv(core_selection_df, out_core_selection)
+
+    return {
+        "report": out_full,
+        "watch": out_watch,
+        "entry": out_entry,
+        "core_selection": out_core_selection,
+    }
+
+
+def _write_signal_outputs(
+    signal_summary_df: pd.DataFrame,
+    signal_events_df: pd.DataFrame,
+    selection_guide_df: pd.DataFrame,
+    signal_indicator_guide_df: pd.DataFrame,
+    today: str,
+) -> dict[str, Path | None]:
+    out_signal_summary = OUTPUT_DIR / f"{SIGNAL_SUMMARY_FILE_PREFIX}_{today}.csv"
+    out_signal_summary = _safe_write_csv(signal_summary_df, out_signal_summary)
+
+    out_signal_events = OUTPUT_DIR / f"{SIGNAL_EVENTS_FILE_PREFIX}_{today}.csv"
+    out_signal_events = _safe_write_csv(signal_events_df, out_signal_events)
+
+    out_selection_guide = OUTPUT_DIR / f"{SELECTION_GUIDE_FILE_PREFIX}_{today}.csv"
+    out_selection_guide = _safe_write_csv(selection_guide_df, out_selection_guide)
+
+    priority_df = selection_guide_df.loc[selection_guide_df["선정의견"] == "우선검토"].copy()
+    out_selection_priority = OUTPUT_DIR / f"{SELECTION_PRIORITY_FILE_PREFIX}_{today}.csv"
+    out_selection_priority = _safe_write_csv(priority_df, out_selection_priority)
+
+    out_signal_indicator_guide = OUTPUT_DIR / f"{SIGNAL_INDICATOR_GUIDE_FILE_PREFIX}_{today}.csv"
+    out_signal_indicator_guide = _safe_write_csv(signal_indicator_guide_df, out_signal_indicator_guide)
+
+    return {
+        "signal_summary": out_signal_summary,
+        "signal_events": out_signal_events,
+        "selection_guide": out_selection_guide,
+        "selection_priority": out_selection_priority,
+        "signal_indicator_guide": out_signal_indicator_guide,
+    }
+
+
+def _prepare_signal_artifacts(
+    df_sorted: pd.DataFrame,
+    signal_event_rows: list[dict[str, object]],
+    today: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    signal_events_df = pd.DataFrame(signal_event_rows)
+    signal_summary_df = _build_signal_summary(signal_events_df, today=today)
+    selection_guide_df = _build_selection_guide(df_sorted=df_sorted, signal_summary_df=signal_summary_df, today=today)
+    signal_indicator_guide_df = _build_signal_indicator_guide(signal_summary_df=signal_summary_df, today=today)
+    return signal_events_df, signal_summary_df, selection_guide_df, signal_indicator_guide_df
+
+
+def _apply_postprocess(df_sorted: pd.DataFrame, today: str) -> pd.DataFrame:
+    # Sector PE cap: prevent fair value explosion when EPS estimate is unstable.
+    df_sorted = df_sorted.copy()
+    df_sorted["sector_pe_cap"] = df_sorted.groupby("sector_group")["pe_now"].transform(_safe_nanmedian)
+    df_sorted["sector_pe_cap"] = pd.to_numeric(df_sorted["sector_pe_cap"], errors="coerce").clip(lower=5.0, upper=30.0)
+    use_cap = df_sorted["eps_source_used"].isin(["FORWARD_AUTO", "GROWTH_AUTO"])
+    eff_pe = np.where(use_cap, np.minimum(df_sorted["sector_pe_cap"], 25.0), np.nan)
+    eff_pe = np.where(np.isnan(eff_pe), np.nan, eff_pe)
+    cap_price = pd.to_numeric(df_sorted["expected_eps"], errors="coerce") * pd.to_numeric(eff_pe, errors="coerce")
+    cap_upside = ((cap_price / pd.to_numeric(df_sorted["close"], errors="coerce")) - 1.0) * 100.0
+    overwrite_mask = use_cap & cap_price.notna()
+    df_sorted.loc[overwrite_mask, "fair_price_base"] = cap_price[overwrite_mask]
+    df_sorted.loc[overwrite_mask, "upside_base_pct"] = cap_upside[overwrite_mask]
+    df_sorted.loc[overwrite_mask, "valuation_score"] = df_sorted.loc[overwrite_mask, "upside_base_pct"].apply(calc_valuation_score)
+
+    # Recompute total_score after valuation overwrite.
+    df_sorted["total_score"] = np.where(
+        pd.to_numeric(df_sorted["valuation_score"], errors="coerce").isna(),
+        pd.to_numeric(df_sorted["technical_score"], errors="coerce"),
+        0.5 * pd.to_numeric(df_sorted["valuation_score"], errors="coerce")
+        + 0.5 * pd.to_numeric(df_sorted["technical_score"], errors="coerce"),
+    )
+
+    # Re-rank after overwrite.
+    df_sorted = df_sorted.sort_values(by=["total_score", "technical_score", "upside_base_pct"], ascending=False).reset_index(drop=True)
+    df_sorted.insert(0, "suggested_rank", np.arange(1, len(df_sorted) + 1))
+    df_sorted.insert(1, "combined_rank", np.arange(1, len(df_sorted) + 1))
+    df_sorted.insert(0, "date", today)
+
+    # add brief reason/warn
+    pair = df_sorted.apply(_compose_brief_reason_and_warn, axis=1, result_type="expand")
+    pair.columns = ["brief_reason", "warn_flags"]
+    df_sorted = df_sorted.join(pair)
+
+    # Relative volume percentile in today's universe (0~100).
+    df_sorted["volume_ratio_pct_rank"] = pd.to_numeric(df_sorted["volume_ratio_20d"], errors="coerce").rank(pct=True) * 100.0
+    return df_sorted
+
+
+def _materialize_daily_outputs(
+    df_sorted: pd.DataFrame,
+    signal_event_rows: list[dict[str, object]],
+    today: str,
+    output_mode: str,
+) -> dict[str, Path | None]:
+    signal_events_df, signal_summary_df, selection_guide_df, signal_indicator_guide_df = _prepare_signal_artifacts(
+        df_sorted=df_sorted,
+        signal_event_rows=signal_event_rows,
+        today=today,
+    )
+
+    primary_outputs = _write_primary_outputs(df_sorted=df_sorted, selection_guide_df=selection_guide_df, today=today)
+    out_full = primary_outputs["report"]
+    out_watch = primary_outputs["watch"]
+    out_entry = primary_outputs["entry"]
+    out_core_selection = primary_outputs["core_selection"]
+
+    out_signal_summary = None
+    out_signal_events = None
+    out_selection_guide = None
+    out_selection_priority = None
+    out_signal_indicator_guide = None
+    out_watch_saved = None
+    out_entry_saved = None
+
+    if output_mode == "full":
+        out_watch_saved = out_watch
+        out_entry_saved = out_entry
+        signal_outputs = _write_signal_outputs(
+            signal_summary_df=signal_summary_df,
+            signal_events_df=signal_events_df,
+            selection_guide_df=selection_guide_df,
+            signal_indicator_guide_df=signal_indicator_guide_df,
+            today=today,
+        )
+        out_signal_summary = signal_outputs["signal_summary"]
+        out_signal_events = signal_outputs["signal_events"]
+        out_selection_guide = signal_outputs["selection_guide"]
+        out_selection_priority = signal_outputs["selection_priority"]
+        out_signal_indicator_guide = signal_outputs["signal_indicator_guide"]
+    else:
+        cleanup_redundant_outputs(today=today)
+
+    created_column_doc = ensure_column_dictionary_doc(df_sorted=df_sorted)
+    out_timeline = build_final_buy_timeline_30d(df_sorted=df_sorted, today=today, as_of=today)
+    out_diff = build_final_buy_diff(df_sorted=df_sorted, today=today)
+    removed_legacy = cleanup_legacy_outputs(today=today)
+
+    result = {
+        "report": out_full,
+        "core_selection": out_core_selection,
+        "watch": out_watch_saved,
+        "entry": out_entry_saved,
+        "signal_summary": out_signal_summary,
+        "signal_events": out_signal_events,
+        "selection_guide": out_selection_guide,
+        "selection_priority": out_selection_priority,
+        "signal_indicator_guide": out_signal_indicator_guide,
+        "timeline": out_timeline,
+        "diff": out_diff,
+        "column_doc": created_column_doc,
+    }
+    result["removed_legacy"] = removed_legacy  # type: ignore[assignment]
+    return result
+
+
+def build_final_buy_timeline_30d(df_sorted: pd.DataFrame, today: str, as_of: str | None = None) -> Optional[Path]:
     out_path = OUTPUT_DIR / f"{TIMELINE_FILE_PREFIX}_{today}.csv"
     final_buy = df_sorted.loc[df_sorted["combined_action"] == "최종매수후보", ["name", "ticker", "market"]].copy()
     if final_buy.empty:
@@ -1094,10 +1427,7 @@ def build_final_buy_timeline_30d(df_sorted: pd.DataFrame, today: str) -> Optiona
         name = str(r.get("name") or "").strip()
         yf_ticker = f"{ticker}.KS" if market == "KS" else f"{ticker}.KQ"
 
-        try:
-            hist = yf.Ticker(yf_ticker).history(period="6mo", auto_adjust=False)
-        except Exception:
-            continue
+        hist = _download_history(yf_ticker, period="6mo", as_of=as_of)
         if hist is None or hist.empty:
             continue
 
@@ -1305,7 +1635,33 @@ def build_final_buy_diff(df_sorted: pd.DataFrame, today: str) -> Optional[Path]:
     return saved
 
 
-def _calc_market_regime_meta(period: str = "6mo") -> dict[str, object]:
+def _period_start(end_ts: pd.Timestamp, period: str) -> pd.Timestamp:
+    period = str(period or "6mo").strip().lower()
+    if period.endswith("mo") and period[:-2].isdigit():
+        return end_ts - pd.DateOffset(months=int(period[:-2]))
+    if period.endswith("y") and period[:-1].isdigit():
+        return end_ts - pd.DateOffset(years=int(period[:-1]))
+    if period.endswith("d") and period[:-1].isdigit():
+        return end_ts - pd.Timedelta(days=int(period[:-1]))
+    return end_ts - pd.DateOffset(months=6)
+
+
+def _download_history(ticker: str, period: str, as_of: str | None = None) -> pd.DataFrame:
+    tk = yf.Ticker(ticker)
+    if as_of:
+        end_ts = pd.Timestamp(as_of) + pd.Timedelta(days=1)
+        start_ts = _period_start(pd.Timestamp(as_of), period)
+        try:
+            return tk.history(start=start_ts.to_pydatetime(), end=end_ts.to_pydatetime(), auto_adjust=False)
+        except Exception:
+            return pd.DataFrame()
+    try:
+        return tk.history(period=str(period), auto_adjust=False)
+    except Exception:
+        return pd.DataFrame()
+
+
+def _calc_market_regime_meta(period: str = "6mo", as_of: str | None = None) -> dict[str, object]:
     """Calculate market regime diagnostics and return metadata.
 
     Multi-signal regime rule:
@@ -1332,7 +1688,7 @@ def _calc_market_regime_meta(period: str = "6mo") -> dict[str, object]:
             "roc60": np.nan,
         }
         try:
-            hist = yf.Ticker(t).history(period=period, auto_adjust=False)
+            hist = _download_history(t, period=period, as_of=as_of)
         except Exception:
             hist = None
         if hist is None or hist.empty or "Close" not in hist.columns:
@@ -1427,9 +1783,9 @@ def _calc_market_regime_meta(period: str = "6mo") -> dict[str, object]:
     }
 
 
-def calc_market_regime_and_multiplier(period: str = "6mo") -> tuple[str, float]:
+def calc_market_regime_and_multiplier(period: str = "6mo", as_of: str | None = None) -> tuple[str, float]:
     """Return market regime and weight multiplier."""
-    meta = _calc_market_regime_meta(period=period)
+    meta = _calc_market_regime_meta(period=period, as_of=as_of)
     return str(meta["regime"]), float(meta["multiplier"])
 
 
@@ -1490,13 +1846,66 @@ def _compose_brief_reason_and_warn(row: pd.Series) -> tuple[str, str]:
     return " | ".join(reasons[:6]), ",".join(warns)
 
 
-def main(limit: int | None = None, period: str = "1y", output_mode: str = DEFAULT_OUTPUT_MODE) -> None:
+def _build_scored_frame(
+    universe: pd.DataFrame,
+    assumptions: pd.DataFrame,
+    eps_cache: pd.DataFrame,
+    period: str,
+    market_regime: str,
+    regime_mult: float,
+    as_of: str | None = None,
+) -> tuple[pd.DataFrame, list[dict[str, object]]]:
+    market_return_20d = 0.0
+    rows: list[dict[str, object]] = []
+    signal_event_rows: list[dict[str, object]] = []
+
+    for _, u in universe.iterrows():
+        ticker = _zfill6(u.get("ticker"))
+        name = str(u.get("name") or "").strip()
+        market = str(u.get("market") or "").strip() or "KS"
+
+        yf_ticker = f"{ticker}.KS" if market == "KS" else f"{ticker}.KQ"
+        hist = _download_history(yf_ticker, period=str(period), as_of=as_of)
+        if hist is None or hist.empty:
+            continue
+
+        close_series = hist["Close"].dropna()
+        if close_series.empty:
+            continue
+
+        signal_event_rows.extend(_build_signal_event_rows(name=name, ticker=ticker, market=market, hist=hist))
+        arow = assumptions.loc[assumptions["ticker"].astype(str).str.zfill(6) == ticker]
+        if arow.empty:
+            a = pd.Series(DEFAULT_ASSUMPTION)
+        else:
+            a = arow.iloc[0]
+
+        cache_row = eps_cache.loc[eps_cache["ticker"].astype(str).str.zfill(6) == ticker]
+        row = _build_scored_row(
+            name=name,
+            ticker=ticker,
+            market=market,
+            hist=hist,
+            assumptions_row=a,
+            cache_row=cache_row,
+            market_regime=market_regime,
+            regime_mult=regime_mult,
+        )
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        raise RuntimeError("No rows produced. Data collection failed.")
+    return df, signal_event_rows
+
+
+def main(limit: int | None = None, period: str = "1y", output_mode: str = DEFAULT_OUTPUT_MODE, as_of: str | None = None) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     if AUTO_BUILD_UNIVERSE and (not UNIVERSE_PATH.exists()):
         rebuilt = maybe_rebuild_universe_csv(TOP_N_KOSPI, TOP_N_KOSDAQ)
         if rebuilt is not None:
-            print(f"[Universe] Auto rebuilt: {len(rebuilt)} rows")
+            pass
 
     if not UNIVERSE_PATH.exists():
         raise FileNotFoundError(f"Missing universe.csv: {UNIVERSE_PATH}")
@@ -1515,8 +1924,8 @@ def main(limit: int | None = None, period: str = "1y", output_mode: str = DEFAUL
 
     eps_cache = load_eps_cache(EPS_CACHE_PATH)
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    regime_meta = _calc_market_regime_meta(period="6mo")
+    today = str(as_of or datetime.now().strftime("%Y-%m-%d"))
+    regime_meta = _calc_market_regime_meta(period="6mo", as_of=today)
     market_regime = str(regime_meta["regime"])
     regime_mult = float(regime_meta["multiplier"])
     signal_bear = regime_meta["signal_bear"]
@@ -1541,292 +1950,31 @@ def main(limit: int | None = None, period: str = "1y", output_mode: str = DEFAUL
             f"flags(ma/hv/roc)={ma_flag}/{hv_flag}/{roc_flag}"
         )
 
-    # Pre-compute simple market return proxy (average of all symbols 20d)
-    market_return_20d = 0.0
-
-    rows = []
-    signal_event_rows: list[dict[str, object]] = []
-    for _, u in universe.iterrows():
-        ticker = _zfill6(u.get("ticker"))
-        name = str(u.get("name") or "").strip()
-        market = str(u.get("market") or "").strip() or "KS"
-
-        yf_ticker = f"{ticker}.KS" if market == "KS" else f"{ticker}.KQ"
-        tk = yf.Ticker(yf_ticker)
-        try:
-            hist = tk.history(period=str(period), auto_adjust=False)
-        except Exception:
-            continue
-        if hist is None or hist.empty:
-            continue
-
-        close_series = hist["Close"].dropna()
-        if close_series.empty:
-            continue
-
-        signal_event_rows.extend(_build_signal_event_rows(name=name, ticker=ticker, market=market, hist=hist))
-
-        close = safe_float(close_series.iloc[-1])
-        ma20 = safe_float(close_series.rolling(20).mean().iloc[-1])
-        ma60 = safe_float(close_series.rolling(60).mean().iloc[-1])
-        ma120 = safe_float(close_series.rolling(120).mean().iloc[-1])
-        ma200 = safe_float(close_series.rolling(200).mean().iloc[-1])
-        above_ma200 = int(close > ma200) if ma200 and ma200 > 0 else 0
-
-        rsi14 = calc_rsi(close_series)
-        macd_hist = calc_macd_hist(close_series)
-        volume_ratio_20d = calc_volume_ratio(hist.get("Volume"))
-        breakout_20d_high = calc_breakout_20d_high(close_series)
-
-        ret_5d = calc_returns(close_series, 5)
-        ret_20d = calc_returns(close_series, 20)
-        rs_20d = ret_20d - market_return_20d if not np.isnan(ret_20d) else np.nan
-
-        arow = assumptions.loc[assumptions["ticker"].astype(str).str.zfill(6) == ticker]
-        if arow.empty:
-            a = pd.Series(DEFAULT_ASSUMPTION)
-        else:
-            a = arow.iloc[0]
-
-        cache_row = eps_cache.loc[eps_cache["ticker"].astype(str).str.zfill(6) == ticker]
-        trailing_eps_dart = np.nan
-        consensus_eps_scrape = np.nan
-        forward_eps_auto = np.nan
-        source_primary = ""
-        if not cache_row.empty:
-            trailing_eps_dart = safe_float(cache_row.iloc[0].get("trailing_eps_dart", np.nan))
-            consensus_eps_scrape = safe_float(cache_row.iloc[0].get("consensus_eps_scrape", np.nan))
-            forward_eps_auto = safe_float(cache_row.iloc[0].get("forward_eps_auto", np.nan))
-            source_primary = str(cache_row.iloc[0].get("source_primary", "") or "").strip()
-
-        manual_forward_eps = safe_float(a.get("manual_forward_eps", np.nan))
-        expected_eps = manual_forward_eps
-        eps_source_used = "MANUAL_FORWARD_EPS"
-        # Priority changed per request: Manual > DART > Consensus > Forward Auto.
-        if np.isnan(expected_eps):
-            expected_eps = trailing_eps_dart
-            eps_source_used = "TRAILING_DART"
-        if np.isnan(expected_eps):
-            expected_eps = consensus_eps_scrape
-            eps_source_used = "CONSENSUS_SCRAPE"
-        if np.isnan(expected_eps):
-            expected_eps = forward_eps_auto
-            eps_source_used = "FORWARD_AUTO"
-
-        if np.isnan(expected_eps) and (not np.isnan(trailing_eps_dart)):
-            # Forward fallback using user assumption growth when consensus is missing.
-            growth_pct = safe_float(a.get("eps_growth_3y_pct", 10.0))
-            growth = growth_pct / 100.0 if not np.isnan(growth_pct) else 0.10
-            growth = float(np.clip(growth, -0.5, 0.8))
-            expected_eps = trailing_eps_dart * (1.0 + growth)
-            eps_source_used = "GROWTH_AUTO"
-
-        target_pe_base = safe_float(a.get("target_pe_base", 12.0))
-
-        fair_price_base = expected_eps * target_pe_base if (not np.isnan(expected_eps) and close > 0) else np.nan
-        upside_base_pct = ((fair_price_base / close) - 1.0) * 100.0 if (not np.isnan(fair_price_base) and close > 0) else np.nan
-        pe_now = close / expected_eps if (close > 0 and expected_eps and not np.isnan(expected_eps) and expected_eps != 0) else np.nan
-
-        valuation_score = calc_valuation_score(safe_float(upside_base_pct))
-
-        row = {
-            "name": name,
-            "ticker": ticker,
-            "market": market,
-            "sector_group": str(a.get("sector_group", "기타")),
-            "close": close,
-            "ma20": ma20,
-            "ma60": ma60,
-            "ma120": ma120,
-            "ma200": ma200,
-            "above_ma200": above_ma200,
-            "rsi14": rsi14,
-            "macd_hist": macd_hist,
-            "volume_ratio_20d": volume_ratio_20d,
-            "breakout_20d_high": breakout_20d_high,
-            "return_5d": ret_5d,
-            "return_20d": ret_20d,
-            "relative_strength_20d": rs_20d,
-            "trailing_eps_dart": trailing_eps_dart,
-            "consensus_eps_scrape": consensus_eps_scrape,
-            "forward_eps_auto": forward_eps_auto,
-            "source_primary": source_primary,
-            "eps_source_used": eps_source_used,
-            "manual_forward_eps": manual_forward_eps,
-            "expected_eps": expected_eps,
-            "pe_now": pe_now,
-            "fair_price_base": fair_price_base,
-            "upside_base_pct": upside_base_pct,
-            "valuation_score": valuation_score,
-            "is_loss_making": 1 if ((expected_eps < 0) or (trailing_eps_dart < 0)) else int(safe_float(a.get("is_loss_making", 0)) or 0),
-            "max_position_pct": safe_float(a.get("max_position_pct", 3.0)),
-        }
-
-        row["technical_score"] = calc_technical_score(pd.Series(row))
-
-        # total_score: valuation(50%) + technical(50%) if valuation exists, else technical only
-        if np.isnan(row["valuation_score"]):
-            row["total_score"] = float(row["technical_score"])
-        else:
-            row["total_score"] = float(0.5 * row["valuation_score"] + 0.5 * row["technical_score"])
-
-        # action
-        has_eps = not np.isnan(pd.to_numeric(row.get("expected_eps", np.nan), errors="coerce"))
-        cond_buy = has_eps and (row["total_score"] >= 75) and (above_ma200 == 1) and (breakout_20d_high == 1)
-        cond_wait = has_eps and (row["total_score"] >= 65) and (above_ma200 == 1)
-        cond_watch = has_eps and (row["total_score"] >= 50)
-
-        if cond_buy:
-            row["combined_action"] = "최종매수후보"
-        elif cond_wait:
-            row["combined_action"] = "진입대기"
-        elif cond_watch:
-            row["combined_action"] = "관찰"
-        elif not has_eps:
-            # EPS 결측 종목은 밸류 판단을 보류하되 관찰군에 남긴다.
-            # 자동 비중은 0%로 유지해 리스크를 통제한다.
-            row["combined_action"] = "관찰"
-        else:
-            row["combined_action"] = "제외"
-
-        row["suggested_weight_pct"] = calc_weight(row["total_score"], row["max_position_pct"])
-        if not has_eps:
-            row["suggested_weight_pct"] = 0.0
-        
-        # Action-weight consistency check (NEW in v1.1.0): force 0% weight if excluded
-        if row["combined_action"] == "제외":
-            row["suggested_weight_pct"] = 0.0
-        
-        row["market_regime"] = market_regime
-        row["regime_weight_multiplier"] = regime_mult
-        row["suggested_weight_pct"] = float(row["suggested_weight_pct"] * regime_mult)
-
-        rows.append(row)
-
-    df = pd.DataFrame(rows)
-    if df.empty:
-        raise RuntimeError("No rows produced. Data collection failed.")
-
-    df_sorted = df.sort_values(by=["total_score", "technical_score", "upside_base_pct"], ascending=False).reset_index(drop=True)
-
-    # Sector PE cap: prevent fair value explosion when EPS estimate is unstable.
-    df_sorted["sector_pe_cap"] = df_sorted.groupby("sector_group")["pe_now"].transform(_safe_nanmedian)
-    df_sorted["sector_pe_cap"] = pd.to_numeric(df_sorted["sector_pe_cap"], errors="coerce").clip(lower=5.0, upper=30.0)
-    use_cap = df_sorted["eps_source_used"].isin(["FORWARD_AUTO", "GROWTH_AUTO"])
-    eff_pe = np.where(use_cap, np.minimum(df_sorted["sector_pe_cap"], 25.0), np.nan)
-    eff_pe = np.where(np.isnan(eff_pe), np.nan, eff_pe)
-    cap_price = pd.to_numeric(df_sorted["expected_eps"], errors="coerce") * pd.to_numeric(eff_pe, errors="coerce")
-    cap_upside = ((cap_price / pd.to_numeric(df_sorted["close"], errors="coerce")) - 1.0) * 100.0
-    overwrite_mask = use_cap & cap_price.notna()
-    df_sorted.loc[overwrite_mask, "fair_price_base"] = cap_price[overwrite_mask]
-    df_sorted.loc[overwrite_mask, "upside_base_pct"] = cap_upside[overwrite_mask]
-    df_sorted.loc[overwrite_mask, "valuation_score"] = df_sorted.loc[overwrite_mask, "upside_base_pct"].apply(calc_valuation_score)
-    # Recompute total_score after valuation overwrite.
-    df_sorted["total_score"] = np.where(
-        pd.to_numeric(df_sorted["valuation_score"], errors="coerce").isna(),
-        pd.to_numeric(df_sorted["technical_score"], errors="coerce"),
-        0.5 * pd.to_numeric(df_sorted["valuation_score"], errors="coerce")
-        + 0.5 * pd.to_numeric(df_sorted["technical_score"], errors="coerce"),
+    df, signal_event_rows = _build_scored_frame(
+        universe=universe,
+        assumptions=assumptions,
+        eps_cache=eps_cache,
+        period=str(period),
+        market_regime=market_regime,
+        regime_mult=regime_mult,
+        as_of=today,
     )
+    df_sorted = _apply_postprocess(df.sort_values(by=["total_score", "technical_score", "upside_base_pct"], ascending=False).reset_index(drop=True), today=today)
 
-    # Re-rank after overwrite.
-    df_sorted = df_sorted.sort_values(by=["total_score", "technical_score", "upside_base_pct"], ascending=False).reset_index(drop=True)
-    df_sorted.insert(0, "suggested_rank", np.arange(1, len(df_sorted) + 1))
-    df_sorted.insert(1, "combined_rank", np.arange(1, len(df_sorted) + 1))
-    df_sorted.insert(0, "date", today)
-
-    # add brief reason/warn
-    pair = df_sorted.apply(_compose_brief_reason_and_warn, axis=1, result_type="expand")
-    pair.columns = ["brief_reason", "warn_flags"]
-    df_sorted = df_sorted.join(pair)
-
-    # Relative volume percentile in today's universe (0~100).
-    df_sorted["volume_ratio_pct_rank"] = pd.to_numeric(df_sorted["volume_ratio_20d"], errors="coerce").rank(pct=True) * 100.0
-
-    out_full = OUTPUT_DIR / f"{REPORT_FILE_PREFIX}_{today}.csv"
-    report_ko = df_sorted.copy()
-    report_ko.columns = make_bilingual_headers(list(report_ko.columns))
-    out_full = _safe_write_csv(report_ko, out_full)
-
-    # Watchlist (human-friendly)
-    watch_cols = [
-        "date",
-        "suggested_rank",
-        "combined_rank",
-        "name",
-        "ticker",
-        "market",
-        "sector_group",
-        "close",
-        "upside_base_pct",
-        "valuation_score",
-        "technical_score",
-        "total_score",
-        "combined_action",
-        "suggested_weight_pct",
-        "brief_reason",
-        "warn_flags",
-    ]
-    watch = df_sorted[watch_cols].copy()
-    watch_ko = watch.copy()
-    watch_ko.columns = make_bilingual_headers(list(watch_ko.columns))
-    out_watch = OUTPUT_DIR / f"{WATCH_FILE_PREFIX}_{today}.csv"
-    out_watch = _safe_write_csv(watch_ko, out_watch)
-
-    # Entry candidates
-    entry = df_sorted.loc[df_sorted["combined_action"].isin(["최종매수후보", "진입대기"])].copy()
-    entry_cols = watch_cols
-    entry = entry[entry_cols]
-    entry_ko = entry.copy()
-    entry_ko.columns = make_bilingual_headers(list(entry_ko.columns))
-    out_entry = OUTPUT_DIR / f"{ENTRY_FILE_PREFIX}_{today}.csv"
-    out_entry = _safe_write_csv(entry_ko, out_entry)
-
-    signal_events_df = pd.DataFrame(signal_event_rows)
-    signal_summary_df = _build_signal_summary(signal_events_df, today=today)
-    selection_guide_df = _build_selection_guide(df_sorted=df_sorted, signal_summary_df=signal_summary_df, today=today)
-    signal_indicator_guide_df = _build_signal_indicator_guide(signal_summary_df=signal_summary_df, today=today)
-    core_selection_df = _build_core_selection_output(selection_guide_df=selection_guide_df)
-
-    out_core_selection = OUTPUT_DIR / f"{CORE_SELECTION_FILE_PREFIX}_{today}.csv"
-    out_core_selection = _safe_write_csv(core_selection_df, out_core_selection)
-
-    out_signal_summary = None
-    out_signal_events = None
-    out_selection_guide = None
-    out_selection_priority = None
-    out_signal_indicator_guide = None
-    out_watch_saved = None
-    out_entry_saved = None
-
-    if output_mode == "full":
-        out_watch_saved = out_watch
-        out_entry_saved = out_entry
-
-        out_signal_summary = OUTPUT_DIR / f"{SIGNAL_SUMMARY_FILE_PREFIX}_{today}.csv"
-        out_signal_summary = _safe_write_csv(signal_summary_df, out_signal_summary)
-
-        out_signal_events = OUTPUT_DIR / f"{SIGNAL_EVENTS_FILE_PREFIX}_{today}.csv"
-        out_signal_events = _safe_write_csv(signal_events_df, out_signal_events)
-
-        out_selection_guide = OUTPUT_DIR / f"{SELECTION_GUIDE_FILE_PREFIX}_{today}.csv"
-        out_selection_guide = _safe_write_csv(selection_guide_df, out_selection_guide)
-
-        priority_df = selection_guide_df.loc[selection_guide_df["선정의견"] == "우선검토"].copy()
-        out_selection_priority = OUTPUT_DIR / f"{SELECTION_PRIORITY_FILE_PREFIX}_{today}.csv"
-        out_selection_priority = _safe_write_csv(priority_df, out_selection_priority)
-
-        out_signal_indicator_guide = OUTPUT_DIR / f"{SIGNAL_INDICATOR_GUIDE_FILE_PREFIX}_{today}.csv"
-        out_signal_indicator_guide = _safe_write_csv(signal_indicator_guide_df, out_signal_indicator_guide)
-    else:
-        cleanup_redundant_outputs(today=today)
-
-    # Column dictionary is managed as a documentation asset.
-    created_column_doc = ensure_column_dictionary_doc(df_sorted=df_sorted)
-
-    out_timeline = build_final_buy_timeline_30d(df_sorted=df_sorted, today=today)
-    out_diff = build_final_buy_diff(df_sorted=df_sorted, today=today)
-    removed_legacy = cleanup_legacy_outputs(today=today)
+    outputs = _materialize_daily_outputs(df_sorted=df_sorted, signal_event_rows=signal_event_rows, today=today, output_mode=output_mode)
+    out_full = outputs["report"]
+    out_core_selection = outputs["core_selection"]
+    out_watch_saved = outputs["watch"]
+    out_entry_saved = outputs["entry"]
+    out_signal_summary = outputs["signal_summary"]
+    out_signal_events = outputs["signal_events"]
+    out_selection_guide = outputs["selection_guide"]
+    out_selection_priority = outputs["selection_priority"]
+    out_signal_indicator_guide = outputs["signal_indicator_guide"]
+    out_timeline = outputs["timeline"]
+    out_diff = outputs["diff"]
+    created_column_doc = outputs["column_doc"]
+    removed_legacy = outputs["removed_legacy"]
 
     print("[Saved]", out_full)
     print("[Saved]", out_core_selection)
@@ -1858,6 +2006,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build UP daily valuation report (brief outputs included)")
     parser.add_argument("--limit", type=int, default=0, help="Optional ticker limit for quick test")
     parser.add_argument("--period", type=str, default="1y", help="yfinance history period (e.g., 6mo, 1y, 2y)")
+    parser.add_argument("--as-of", type=str, default="", help="Optional report date override in YYYY-MM-DD")
     parser.add_argument(
         "--output-mode",
         type=str,
@@ -1870,4 +2019,5 @@ if __name__ == "__main__":
         limit=(args.limit if args.limit and args.limit > 0 else None),
         period=str(args.period or "1y"),
         output_mode=str(args.output_mode or DEFAULT_OUTPUT_MODE),
+        as_of=(str(args.as_of).strip() or None),
     )

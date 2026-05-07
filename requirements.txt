@@ -8,3 +8,4 @@ beautifulsoup4>=4.11.1
 lxml>=4.9
 google-api-python-client>=2.175.0
 google-auth>=2.40.0
+streamlit>=1.36.0

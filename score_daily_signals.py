@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +16,7 @@ OUTPUT_DIR = BASE_DIR / "output"
 
 
 def _latest_file(pattern: str) -> Path | None:
-    candidates = [path for path in OUTPUT_DIR.glob(pattern) if path.is_file() and "_locked_" not in path.name]
+    candidates = [path for path in OUTPUT_DIR.glob(pattern) if path.is_file()]
     if not candidates:
         return None
     return max(candidates, key=lambda path: path.stat().st_mtime)
@@ -53,12 +54,21 @@ def _to_float(value: object) -> float:
 
 
 def _safe_write_csv(df: pd.DataFrame, path: Path) -> Path:
+    tmp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
     try:
-        df.to_csv(path, index=False, encoding="utf-8-sig")
+        df.to_csv(tmp_path, index=False, encoding="utf-8-sig")
+        os.replace(tmp_path, path)
         return path
     except PermissionError:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
         fallback = path.with_name(f"{path.stem}_locked_{datetime.now().strftime('%H%M%S')}{path.suffix}")
-        df.to_csv(fallback, index=False, encoding="utf-8-sig")
+        fallback_tmp = fallback.with_name(f"{fallback.stem}.tmp{fallback.suffix}")
+        df.to_csv(fallback_tmp, index=False, encoding="utf-8-sig")
+        os.replace(fallback_tmp, fallback)
         return fallback
 
 

@@ -73,7 +73,14 @@ def _read_csv(path: Path) -> pd.DataFrame:
 
 
 def _find_files(root: Path, pattern: str) -> list[Path]:
-    return sorted(p for p in root.glob(pattern) if p.is_file() and "_locked_" not in p.name)
+    files: list[Path] = []
+    for token in pattern.split("|"):
+        token = token.strip()
+        if not token:
+            continue
+        files.extend(p for p in root.glob(token) if p.is_file())
+    unique_files = sorted({path.resolve(): path for path in files}.values(), key=lambda path: path.stat().st_mtime)
+    return unique_files
 
 
 def _find_latest_file(root: Path, pattern: str) -> Path | None:

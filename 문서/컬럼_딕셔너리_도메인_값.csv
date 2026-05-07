@@ -1,4 +1,4 @@
-column_en,column_ko,description_ko,domain_values,example
+﻿column_en,column_ko,description_ko,domain_values,example
 date,기준일,리포트 생성 날짜,YYYYMMDD,2026-04-18
 suggested_rank,추천순위,최종 점수 기준 순위 (1위=최고),1 ~ 800,1
 combined_rank,결합순위,기본면+기술 결합 기준 순위,1 ~ 800,2
