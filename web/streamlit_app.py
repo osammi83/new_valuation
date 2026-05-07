@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import fnmatch
+import json
 import os
 import re
 import subprocess
@@ -10,8 +12,11 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from google_drive_browser import build_drive_service, download_file_bytes, list_files
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / "output"
+DRIVE_CACHE_DIR = BASE_DIR / ".drive_cache"
 
 
 def _setting(name: str, default: str = "") -> str:
@@ -34,6 +39,8 @@ def _setting_bool(name: str, default: bool = False) -> bool:
 
 PUBLIC_APP_MODE = _setting_bool("PUBLIC_APP_MODE")
 PUBLIC_GITHUB_REPO_SLUG = _setting("GITHUB_REPO_SLUG") or _setting("GITHUB_REPOSITORY")
+PUBLIC_GOOGLE_DRIVE_FOLDER_ID = _setting("GOOGLE_DRIVE_FOLDER_ID")
+PUBLIC_GOOGLE_SERVICE_ACCOUNT_JSON = _setting("GOOGLE_SERVICE_ACCOUNT_JSON")
 
 REPORT_PATTERNS = {
     "상세리포트": "상세리포트_*.csv",
@@ -61,6 +68,8 @@ REPORT_DATE_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})(?:_vs_.+)?\.csv$")
 
 
 def _find_files(pattern: str) -> list[Path]:
+    if _drive_available():
+        return _mirror_drive_matches(pattern)
     if pattern.startswith("output/"):
         return sorted(OUTPUT_DIR.glob(pattern.removeprefix("output/")), key=lambda path: path.stat().st_mtime)
     if pattern.startswith("*.csv"):
@@ -86,6 +95,9 @@ def _extract_report_date(path: Path) -> str | None:
 
 
 def _available_report_dates() -> list[str]:
+    if _drive_available():
+        dates = {date for file_info in _drive_match_files("상세리포트_*.csv") if (date := _extract_report_date(Path(str(file_info.get("name", ""))))) }
+        return sorted(dates, reverse=True)
     if not OUTPUT_DIR.exists():
         return []
     dates = {date for path in OUTPUT_DIR.glob("상세리포트_*.csv") if (date := _extract_report_date(path))}
@@ -113,6 +125,68 @@ def _load_csv(path_str: str) -> pd.DataFrame:
         return pd.read_csv(path, encoding="utf-8-sig")
     except Exception:
         return pd.DataFrame()
+
+
+def _drive_available() -> bool:
+    return bool(PUBLIC_APP_MODE and PUBLIC_GOOGLE_DRIVE_FOLDER_ID and PUBLIC_GOOGLE_SERVICE_ACCOUNT_JSON)
+
+
+@st.cache_resource(show_spinner=False)
+def _drive_service():
+    if not _drive_available():
+        return None
+    return build_drive_service(PUBLIC_GOOGLE_SERVICE_ACCOUNT_JSON)
+
+
+@st.cache_data(show_spinner=False)
+def _drive_file_index() -> list[dict[str, object]]:
+    service = _drive_service()
+    if service is None:
+        return []
+    return list_files(service, PUBLIC_GOOGLE_DRIVE_FOLDER_ID)
+
+
+def _normalized_drive_pattern(pattern: str) -> str:
+    return pattern.removeprefix("output/")
+
+
+def _drive_match_files(pattern: str) -> list[dict[str, object]]:
+    normalized_pattern = _normalized_drive_pattern(pattern)
+    files = [file_info for file_info in _drive_file_index() if fnmatch.fnmatch(str(file_info.get("name", "")), normalized_pattern)]
+    return sorted(files, key=lambda item: str(item.get("modifiedTime", "")))
+
+
+def _drive_cache_path(file_name: str) -> Path:
+    return DRIVE_CACHE_DIR / file_name
+
+
+def _mirror_drive_file(file_info: dict[str, object]) -> Path:
+    service = _drive_service()
+    if service is None:
+        raise RuntimeError("Google Drive service is not available")
+
+    file_name = str(file_info.get("name", ""))
+    file_id = str(file_info.get("id", ""))
+    modified_time = str(file_info.get("modifiedTime", ""))
+    cache_path = _drive_cache_path(file_name)
+    metadata_path = cache_path.with_suffix(cache_path.suffix + ".meta.json")
+
+    if cache_path.exists() and metadata_path.exists():
+        try:
+            cached_meta = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if str(cached_meta.get("modifiedTime", "")) == modified_time:
+                return cache_path
+        except Exception:
+            pass
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(download_file_bytes(service, file_id))
+    metadata_path.write_text(json.dumps({"modifiedTime": modified_time}, ensure_ascii=False), encoding="utf-8")
+    return cache_path
+
+
+def _mirror_drive_matches(pattern: str) -> list[Path]:
+    return [_mirror_drive_file(file_info) for file_info in _drive_match_files(pattern)]
 
 
 def _load_preview(path: Path, limit: int = 50) -> pd.DataFrame:
@@ -143,6 +217,8 @@ def _summarize_report(df: pd.DataFrame) -> dict[str, object]:
 
 
 def _list_output_files() -> list[Path]:
+    if _drive_available():
+        return sorted(_mirror_drive_matches("*.csv"), key=lambda path: path.stat().st_mtime, reverse=True)
     if not OUTPUT_DIR.exists():
         return []
     return sorted([path for path in OUTPUT_DIR.glob("*.csv") if path.is_file()], key=lambda path: path.stat().st_mtime, reverse=True)
@@ -169,6 +245,13 @@ def _render_file_preview(title: str, path: Path | None, limit: int) -> None:
         st.info("표시할 데이터가 없습니다.")
         return
     st.dataframe(df, use_container_width=True)
+    st.download_button(
+        label=f"{title} 다운로드",
+        data=path.read_bytes(),
+        file_name=path.name,
+        mime="text/csv",
+        key=f"download_{title}_{path.name}",
+    )
 
 
 def _run_local_command(command: list[str]) -> tuple[int, str]:
@@ -209,11 +292,18 @@ with st.sidebar:
     st.write(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     if st.button("새로고침"):
         st.cache_data.clear()
+        st.cache_resource.clear()
         st.rerun()
 
 resolved_date = None if selected_date == "최신" else selected_date
 pattern = REPORT_PATTERNS[selected_key]
 target_path = _resolve_file(pattern, resolved_date)
+
+if PUBLIC_APP_MODE:
+    if _drive_available():
+        st.info("공용앱은 Google Drive에 저장된 CSV를 읽어서 보여주고, 다운로드도 제공합니다.")
+    else:
+        st.warning("공용앱 secrets에 GOOGLE_DRIVE_FOLDER_ID와 GOOGLE_SERVICE_ACCOUNT_JSON이 있어야 Google Drive 파일을 읽을 수 있습니다.")
 
 if target_path is None:
     st.warning(f"대상 파일을 찾지 못했습니다: {pattern}")
@@ -222,6 +312,13 @@ if target_path is None:
 st.subheader(f"선택 파일: {selected_key}")
 st.write(str(target_path))
 st.write(f"수정 시각: {datetime.fromtimestamp(target_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
+st.download_button(
+    label="현재 파일 다운로드",
+    data=target_path.read_bytes(),
+    file_name=target_path.name,
+    mime="text/csv",
+    key=f"download_current_{target_path.name}",
+)
 
 if selected_key == "상세리포트":
     report_df = _load_csv(str(target_path))
@@ -453,5 +550,15 @@ with tab_files:
             ]
         )
         st.dataframe(recent, use_container_width=True)
+        selected_download_name = st.selectbox("다운로드할 파일", [path.name for path in output_files], key="file_download_select")
+        selected_download_path = next((path for path in output_files if path.name == selected_download_name), None)
+        if selected_download_path is not None:
+            st.download_button(
+                label="선택 파일 다운로드",
+                data=selected_download_path.read_bytes(),
+                file_name=selected_download_path.name,
+                mime="text/csv",
+                key=f"download_file_list_{selected_download_path.name}",
+            )
     else:
         st.info("output 폴더에 CSV가 없습니다.")

@@ -53,6 +53,17 @@ def _collect_targets(output_dir: Path, report_date: str) -> list[Path]:
     return sorted(targets)
 
 
+def _collect_all_targets(base_dir: Path, output_dir: Path) -> list[Path]:
+    targets: list[Path] = []
+    for directory in [base_dir, output_dir]:
+        if not directory.exists():
+            continue
+        for path in directory.glob("*.csv"):
+            if path.is_file() and "_locked_" not in path.name:
+                targets.append(path)
+    return sorted({path.resolve() for path in targets}, key=lambda path: str(path))
+
+
 def _append_publish_history(history_path: Path, row: dict[str, object]) -> None:
     history_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
@@ -125,6 +136,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=str, default=str(OUTPUT_DIR), help="Output directory path")
     parser.add_argument("--folder-id", type=str, default=os.environ.get("GOOGLE_DRIVE_FOLDER_ID", ""), help="Google Drive target folder ID")
     parser.add_argument("--history-path", type=str, default=str(OUTPUT_DIR / "publish_history.csv"), help="Publish history CSV path")
+    parser.add_argument("--all", action="store_true", help="Upload all CSV files from the workspace and output folder")
     parser.add_argument(
         "--service-account-json",
         type=str,
@@ -156,9 +168,12 @@ def main() -> None:
         )
         return
 
-    targets = _collect_targets(Path(args.output_dir), args.date)
+    if args.all:
+        targets = _collect_all_targets(BASE_DIR, Path(args.output_dir))
+    else:
+        targets = _collect_targets(Path(args.output_dir), args.date)
     if not targets:
-        print(f"[Drive] No CSV files found for date {args.date}.")
+        print("[Drive] No CSV files found to upload.")
         _append_publish_history(
             history_path,
             {

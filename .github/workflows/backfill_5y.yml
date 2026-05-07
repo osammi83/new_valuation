@@ -70,3 +70,14 @@ jobs:
           if ('${{ inputs.force }}' -eq 'true') { $args += '--force' }
           if ('${{ inputs.stop_on_error }}' -eq 'true') { $args += '--stop-on-error' }
           python history_backfill.py @args
+
+      - name: Upload backfill outputs to Google Drive
+        shell: powershell
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python publish_to_drive.py --all
