@@ -1,4 +1,4 @@
-# 📚 UP Valuation 문서 폴더
+﻿# 📚 UP Valuation 문서 폴더
 
 **작성일:** 2026-04-20  
 **최종 업데이트:** 2026-04-24
@@ -74,32 +74,51 @@
 **누가 봐야:** 시스템 관리자, DevOps  
 **언제:** 스케줄러 설정할 때, 매일 오전 운영 때  
 **내용:**
-- 초기 설정 (DART 키, Python 경로)
-- Windows Task Scheduler 자동 등록
-- 3가지 정기 작업 상세 설명
-  - UPValuation-Daily (08:30)
-  - UPValuation-EPS-Monthly (매월 1일)
-  - UPValuation-Assumptions-Monthly (매월 1일)
-- 수동 실행 방법
-- 일일 운영 절차 (9:00, 오전중, 월말)
-- 트러블슈팅 & 성능 튜닝
-- 백업 정책
+- 로컬 수동 실행과 GitHub Actions 운영 자동화 분리
+- DART 키, Google Drive 서비스 계정, KRX 로그인 등록
+- GitHub 기반 일일 생성/백필/업로드 흐름
+- 수동 실행 방법과 트러블슈팅
 
-**🎯 추천:** 설정 1회 + 매일 오전 참고
+**🎯 추천:** 설정 1회 + GitHub 운영 기준 참고
+
+### 6️⃣ **Google_Drive_설정_가이드.md** (연결 가이드)
+**누가 봐야:** 시스템 관리자, 운영 담당자  
+**언제:** Google Drive 연결할 때, 서비스 계정 만들 때  
+**내용:**
+- Google Cloud 프로젝트 생성
+- Drive API 활성화
+- 서비스 계정 JSON 발급/공유
+- 로컬 실행용과 GitHub Actions 실행용 설정 분리
+- 검증 명령과 트러블슈팅
+
+**🎯 추천:** Drive 연결 시 먼저 읽기
+
+### 7️⃣ **Google_Drive_설정_완료_체크리스트.md** (점검표)
+**누가 봐야:** 시스템 관리자, 운영 담당자  
+**언제:** 설정 후 확인할 때  
+**내용:**
+- 체크리스트 형태의 완료 확인
+- 설정 파일 수정 여부 확인
+- 테스트 실행 및 Drive 업로드 확인
+
+**🎯 추천:** 설정 직후 체크용
 
 ---
 
 ## 🗂️ 파일 구조 이해
 
 ```
-02.up_valuation/
+03.new_valuation/
 ├── 📚 문서/ ← 현재 폴더
 │   ├── README.md (이 파일)
 │   ├── 신규_개발_재구축_매뉴얼.md
 │   ├── 컬럼_딕셔너리_상세.md
 │   ├── 파일_해석_가이드.md
 │   ├── 컬럼_딕셔너리_도메인_값.csv
+│   ├── 미사용/ ← 통합·중복 문서 보관
 │   └── 자동화_운영_매뉴얼.md
+│   ├── Google_Drive_설정_가이드.md
+│   └── Google_Drive_설정_완료_체크리스트.md
 │
 ├── 📊 데이터 파일
 │   ├── universe.csv (800 종목)
@@ -130,7 +149,13 @@
     ├── refresh_assumptions.py
     ├── upload_to_google_drive.py
     ├── up_valuation_config.json
-    └── run_daily.ps1
+    └── program/
+      ├── python/
+      │   └── run_pipeline.py
+      ├── powershell/
+      │   └── run_daily.ps1
+      └── web/
+        └── streamlit_app.py
 ```
 
 ---
@@ -198,7 +223,7 @@
 - [build_daily_report.py](../build_daily_report.py): 메인 분석 엔진
 - [preprocess_daily_updates.py](../preprocess_daily_updates.py): 일일 전처리
 - [refresh_eps_cache.py](../refresh_eps_cache.py): EPS 캐시 갱신
-- [run_daily.ps1](../run_daily.ps1): 일일 실행 스크립트
+- [run_daily.ps1](../program/powershell/run_daily.ps1): 일일 실행 스크립트
 
 ### 데이터 파일
 - [universe.csv](../universe.csv): 분석 대상
@@ -214,8 +239,12 @@
 
 ### 버전 관리
 - 문서 버전: 1.8
-- 마지막 수정: 2026-04-25
+- 마지막 수정: 2026-05-08
 - 다음 검토: 2026-05-20 (월간)
+
+### 미사용 문서
+- 중복되거나 마스터로 통합된 문서는 `미사용/` 폴더로 이동한다.
+- 최신 기준 문서는 [개발관리_마스터.md](개발관리_마스터.md)이다.
 
 ### 문서 반영 원칙
 - 개발 수정 발생 시 문서 폴더 내 관련 문서에 같은 날 변경 내용을 반영한다.
@@ -277,3 +306,4 @@
 **문서 담당:** UP Valuation Team  
 **피드백:** (이메일 또는 이슈 등록)  
 **마지막 검토:** 2026-04-20
+

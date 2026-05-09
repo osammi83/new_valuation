@@ -85,13 +85,13 @@
 
 ### 4.3) 다운로드한 파일 저장
 - 파일 이름: `[project-id]-[hash].json` (자동 생성)
-- 저장 위치: **`d:\00.개발\02.up_valuation\keys\`** 폴더에 저장
+- 저장 위치: **`d:\00.개발\03.new_valuation\keys\`** 폴더에 저장
   - 폴더가 없으면 먼저 생성
   - 파일명을 `service_account.json`으로 변경 (선택)
 
 ```powershell
 # PowerShell에서 폴더 생성
-New-Item -ItemType Directory -Force -Path "d:\00.개발\02.up_valuation\keys" | Out-Null
+New-Item -ItemType Directory -Force -Path "d:\00.개발\03.new_valuation\keys" | Out-Null
 ```
 
 ### 4.4) JSON 파일 확인
@@ -138,7 +138,7 @@ New-Item -ItemType Directory -Force -Path "d:\00.개발\02.up_valuation\keys" | 
 ## ✅ Step 6: UP Valuation 설정 파일 수정
 
 ### 6.1) 설정 파일 열기
-- **파일:** `d:\00.개발\02.up_valuation\up_valuation_config.json`
+- **파일:** `d:\00.개발\03.new_valuation\up_valuation_config.json`
 - VS Code에서 열기
 
 ### 6.2) 설정 입력
@@ -150,7 +150,7 @@ New-Item -ItemType Directory -Force -Path "d:\00.개발\02.up_valuation\keys" | 
   "pythonPath": "d:/00.개발/.venv/Scripts/python.exe",
   "enableGoogleDriveUpload": true,
   "googleDriveFolderId": "[위에서복사한폴더ID]",
-  "googleServiceAccountJsonPath": "d:/00.개발/02.up_valuation/keys/service_account.json"
+  "googleServiceAccountJsonPath": "d:/00.개발/03.new_valuation/keys/service_account.json"
 }
 ```
 
@@ -160,7 +160,7 @@ New-Item -ItemType Directory -Force -Path "d:\00.개발\02.up_valuation\keys" | 
   "pythonPath": "d:/00.개발/.venv/Scripts/python.exe",
   "enableGoogleDriveUpload": true,
   "googleDriveFolderId": "1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p",
-  "googleServiceAccountJsonPath": "d:/00.개발/02.up_valuation/keys/service_account.json"
+  "googleServiceAccountJsonPath": "d:/00.개발/03.new_valuation/keys/service_account.json"
 }
 ```
 
@@ -175,7 +175,7 @@ New-Item -ItemType Directory -Force -Path "d:\00.개발\02.up_valuation\keys" | 
 PowerShell에서 다음 명령 실행:
 
 ```powershell
-Set-Location "d:\00.개발\02.up_valuation"
+Set-Location "d:\00.개발\03.new_valuation"
 ./run_daily.ps1 --limit 10
 ```
 
@@ -235,6 +235,43 @@ Set-Location "d:\00.개발\02.up_valuation"
 | `[Drive] Error: Folder not found` | 폴더ID 오류 또는 공유 안 됨 | `googleDriveFolderId` 재확인, 폴더 공유 재확인 |
 | 파일이 업로드되지 않음 | 설정 파일 미저장 | 파일 저장 후 파이프라인 재실행 |
 | `enableGoogleDriveUpload: false` | 설정 미활성화 | JSON 파일에서 `true`로 수정 |
+
+---
+
+## 🧪 수동 검증 명령
+
+설정이 잘 들어갔는지 PowerShell에서 바로 확인할 때는 아래 명령을 사용합니다.
+
+### 1) 설정 파일 확인
+
+```powershell
+Set-Location "d:\00.개발\03.new_valuation"
+. .\check_drive_config.ps1
+```
+
+### 2) JSON 값 직접 보기
+
+```powershell
+$config = Get-Content "d:\00.개발\03.new_valuation\up_valuation_config.json" | ConvertFrom-Json
+$config | Format-List
+```
+
+### 3) 서비스 계정 JSON 확인
+
+```powershell
+$json = Get-Content "d:\00.개발\03.new_valuation\keys\service_account.json" | ConvertFrom-Json
+$json | Select-Object project_id, client_email, type | Format-Table
+```
+
+### 4) 폴더 ID 확인
+
+```powershell
+if ([string]::IsNullOrWhiteSpace($config.googleDriveFolderId)) {
+  Write-Host "폴더 ID가 비어 있습니다" -ForegroundColor Red
+} else {
+  Write-Host "폴더 ID: $($config.googleDriveFolderId)" -ForegroundColor Green
+}
+```
 
 ---
 

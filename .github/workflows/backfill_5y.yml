@@ -1,4 +1,4 @@
-name: Backfill 5Y
+﻿name: Backfill 5Y
 
 on:
   workflow_dispatch:
@@ -69,7 +69,7 @@ jobs:
           if ('${{ inputs.max_days }}' -ne '0') { $args += '--max-days'; $args += '${{ inputs.max_days }}' }
           if ('${{ inputs.force }}' -eq 'true') { $args += '--force' }
           if ('${{ inputs.stop_on_error }}' -eq 'true') { $args += '--stop-on-error' }
-          python history_backfill.py @args
+          python program\python\history_backfill.py @args
 
       - name: Upload backfill outputs to Google Drive
         shell: powershell
@@ -80,4 +80,5 @@ jobs:
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
-          python publish_to_drive.py --all
+          python program\python\publish_to_drive.py --all
+

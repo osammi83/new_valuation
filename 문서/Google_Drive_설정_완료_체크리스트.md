@@ -22,7 +22,7 @@ Google Cloud Console에서 수행할 작업입니다.
 - ☐ **Step 2:** Google Drive API 활성화  
 - ☐ **Step 3:** 서비스 계정 생성
 - ☐ **Step 4:** JSON 키 생성 및 저장
-  - 저장 경로: `d:\00.개발\02.up_valuation\keys\service_account.json`
+  - 저장 경로: `d:\00.개발\03.new_valuation\keys\service_account.json`
 - ☐ **Step 5:** Google Drive 폴더 생성 및 공유
   - 폴더명: `UP_Valuation_Reports` (또는 원하는 이름)
   - 공유 대상: 서비스 계정 이메일 (편집자 권한)
@@ -34,14 +34,14 @@ Google Cloud Console에서 수행할 작업입니다.
 
 ### A. 설정 파일 수정
 
-✅ **파일:** `d:\00.개발\02.up_valuation\up_valuation_config.json`
+✅ **파일:** `d:\00.개발\03.new_valuation\up_valuation_config.json`
 
 ```json
 {
   "pythonPath": "d:/00.개발/.venv/Scripts/python.exe",
   "enableGoogleDriveUpload": true,
   "googleDriveFolderId": "[Step 5에서 복사한 폴더ID]",
-  "googleServiceAccountJsonPath": "d:/00.개발/02.up_valuation/keys/service_account.json"
+  "googleServiceAccountJsonPath": "d:/00.개발/03.new_valuation/keys/service_account.json"
 }
 ```
 
@@ -51,7 +51,7 @@ Google Cloud Console에서 수행할 작업입니다.
   "pythonPath": "d:/00.개발/.venv/Scripts/python.exe",
   "enableGoogleDriveUpload": true,
   "googleDriveFolderId": "1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p",
-  "googleServiceAccountJsonPath": "d:/00.개발/02.up_valuation/keys/service_account.json"
+  "googleServiceAccountJsonPath": "d:/00.개발/03.new_valuation/keys/service_account.json"
 }
 ```
 
@@ -65,7 +65,7 @@ Google Cloud Console에서 수행할 작업입니다.
 PowerShell을 열고 다음 명령 실행:
 
 ```powershell
-Set-Location "d:\00.개발\02.up_valuation"
+Set-Location "d:\00.개발\03.new_valuation"
 ./check_drive_config.ps1
 ```
 
@@ -86,7 +86,7 @@ Set-Location "d:\00.개발\02.up_valuation"
 PowerShell에서:
 
 ```powershell
-Set-Location "d:\00.개발\02.up_valuation"
+Set-Location "d:\00.개발\03.new_valuation"
 ./run_daily.ps1 --limit 10 --period 6mo
 ```
 
@@ -177,7 +177,7 @@ Windows Task Scheduler에 다음 설정이 이미 등록되어 있습니다:
 |------|-----|
 | 작업명 | `up_valuation_daily_report` |
 | 실행 주기 | 매일 08:30 |
-| 실행 명령 | `d:\00.개발\02.up_valuation\run_daily.ps1` |
+| 실행 명령 | `d:\00.개발\03.new_valuation\run_daily.ps1` |
 | 파일 업로드 | Google Drive (자동) |
 
 **확인 방법:**
@@ -209,7 +209,7 @@ Get-ScheduledTask -TaskName "*up_valuation*" | Select-Object TaskName, State, La
 ### Q3: "[Drive] Error: File not found" (JSON 키)
 
 **A: JSON 파일 경로 오류**
-- ✅ `d:\00.개발\02.up_valuation\keys\` 폴더에 파일 있는지 확인
+- ✅ `d:\00.개발\03.new_valuation\keys\` 폴더에 파일 있는지 확인
 - ✅ 파일명 확인 (경로와 정확히 같은지)
 - ✅ `up_valuation_config.json`의 경로 재확인 (따옴표 없음)
 
@@ -234,12 +234,12 @@ Get-ScheduledTask -TaskName "*up_valuation*" | Select-Object TaskName, State, La
 
 ### 1️⃣ 설정 파일 내용 보기
 ```powershell
-Get-Content "d:\00.개발\02.up_valuation\up_valuation_config.json" | ConvertFrom-Json | Format-Table
+Get-Content "d:\00.개발\03.new_valuation\up_valuation_config.json" | ConvertFrom-Json | Format-Table
 ```
 
 ### 2️⃣ JSON 키 파일 확인
 ```powershell
-$json = Get-Content "d:\00.개발\02.up_valuation\keys\service_account.json" | ConvertFrom-Json
+$json = Get-Content "d:\00.개발\03.new_valuation\keys\service_account.json" | ConvertFrom-Json
 $json | Select-Object project_id, client_email, type | Format-Table
 ```
 
@@ -277,7 +277,7 @@ Get-EventLog -LogName "System" -Source "Task Scheduler" -Newest 10 | Format-Tabl
 | 문서 | 용도 |
 |------|------|
 | [Google_Drive_설정_가이드.md](Google_Drive_설정_가이드.md) | Google Cloud 설정 (필수) |
-| [check_drive_config_manual.md](check_drive_config_manual.md) | 수동 검증 방법 |
+| [Google_Drive_설정_가이드.md](Google_Drive_설정_가이드.md) | 수동 검증 방법 |
 | [자동화_운영_매뉴얼.md](자동화_운영_매뉴얼.md) | 전체 자동화 가이드 |
 
 ---

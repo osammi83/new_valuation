@@ -1,4 +1,4 @@
-name: Auto Sync
+﻿name: Auto Sync
 
 on:
   workflow_dispatch:
@@ -43,9 +43,10 @@ jobs:
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
-          python run_pipeline.py daily
+          python program\python\run_pipeline.py daily
 
       - name: Sync generated changes back to GitHub
         shell: powershell
         run: |
-          .\sync_github.ps1 -RemoteName origin -Branch main -CommitPrefix 'auto: sync generated changes'
+          .\program\powershell\sync_github.ps1 -RemoteName origin -Branch main -CommitPrefix 'auto: sync generated changes'
+
